@@ -1,0 +1,19 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../.venv_backend"
+		},
+		{
+			"path": "../.vscode"
+		},
+		{
+			"path": "../backend"
+		},
+		{
+			"path": "../frontend"
+		}
+	]
+}
