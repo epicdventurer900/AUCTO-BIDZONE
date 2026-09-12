@@ -23,6 +23,9 @@ jobs:
         working-directory: backend
         run: pip install -r requirements.txt
 
+      - name: Install CI lint tools
+        run: pip install flake8==7.3.0
+
       - name: Compile backend
         run: python -m compileall -q backend
 
