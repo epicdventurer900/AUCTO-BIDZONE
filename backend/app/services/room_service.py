@@ -93,16 +93,24 @@ def join_room(db: Session, user_id: int, data: RoomJoin) -> RoomMember:
 
     team_id = None
     if data.role == RoomRole.BIDDER:
-        if not data.team_name:
+        team_name = (data.team_name or "").strip()
+        if not team_name:
             raise ValueError("Team name is required for bidders")
-        team = Team(
-            room_id=room.id,
-            name=data.team_name.strip(),
-            purse_total=room.purse_per_team,
-            purse_remaining=room.purse_per_team,
+
+        team = (
+            db.query(Team)
+            .filter(Team.room_id == room.id, Team.name == team_name)
+            .first()
         )
-        db.add(team)
-        db.flush()
+        if team is None:
+            team = Team(
+                room_id=room.id,
+                name=team_name,
+                purse_total=room.purse_per_team,
+                purse_remaining=room.purse_per_team,
+            )
+            db.add(team)
+            db.flush()
         team_id = team.id
 
     member = RoomMember(
