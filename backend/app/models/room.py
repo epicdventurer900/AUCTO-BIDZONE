@@ -47,6 +47,9 @@ class Room(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    timer_phase: Mapped[str] = mapped_column(String(30), default="idle")
+    timer_remaining: Mapped[int] = mapped_column(Integer, default=0)
+    timer_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     creator = relationship("User", back_populates="created_rooms")
