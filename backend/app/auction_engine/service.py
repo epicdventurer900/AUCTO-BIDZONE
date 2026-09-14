@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -52,6 +52,19 @@ def _get_highest_bid(db: Session, item_id: int) -> Bid | None:
     )
 
 
+def _remaining_from_deadline(room: Room) -> int:
+    if not room.timer_deadline:
+        return max(0, room.timer_remaining)
+    return max(0, int((room.timer_deadline - datetime.now(timezone.utc)).total_seconds() + 0.999))
+
+
+def _sync_timer_from_room(room: Room):
+    timer = ws_manager.get_timer(room.id)
+    timer.phase = room.timer_phase
+    timer.remaining = _remaining_from_deadline(room) if room.status == RoomStatus.LIVE else room.timer_remaining
+    return timer
+
+
 def get_auction_state(db: Session, room: Room) -> AuctionStateResponse:
     from app.schemas.room import AuctionItemResponse, BidResponse, RoomResponse, TeamResponse
 
@@ -65,7 +78,7 @@ def get_auction_state(db: Session, room: Room) -> AuctionStateResponse:
             if bid:
                 highest_bid = BidResponse.model_validate(bid)
 
-    timer = ws_manager.get_timer(room.id)
+    timer = _sync_timer_from_room(room)
     teams = db.query(Team).filter(Team.room_id == room.id).order_by(Team.name).all()
 
     return AuctionStateResponse(
@@ -78,16 +91,42 @@ def get_auction_state(db: Session, room: Room) -> AuctionStateResponse:
     )
 
 
+def _persist_timer(db: Session, room_id: int, phase: str, remaining: int, deadline: datetime | None):
+    room = db.query(Room).filter(Room.id == room_id).first()
+    if room:
+        room.timer_phase = phase
+        room.timer_remaining = max(0, remaining)
+        room.timer_deadline = deadline
+        db.commit()
+
+
 async def _run_item_timer(room_id: int, confirmation_seconds: int):
     db = SessionLocal()
     try:
-        timer = ws_manager.get_timer(room_id)
-        while timer.remaining > 0:
+        room = db.query(Room).filter(Room.id == room_id).first()
+        if not room or room.status != RoomStatus.LIVE or not room.current_item_id:
+            return
+
+        timer = _sync_timer_from_room(room)
+        while True:
+            remaining = _remaining_from_deadline(room)
+            timer.remaining = remaining
+            await ws_manager.broadcast(room_id, "timer_update", {"remaining": remaining, "phase": timer.phase})
+            if remaining <= 0:
+                break
             await asyncio.sleep(1)
-            timer.remaining -= 1
-            await ws_manager.broadcast(room_id, "timer_update", {"remaining": timer.remaining, "phase": timer.phase})
+            db.expire_all()
+            room = db.query(Room).filter(Room.id == room_id).first()
+            if not room or room.status != RoomStatus.LIVE or not room.current_item_id:
+                return
+            timer = _sync_timer_from_room(room)
 
         if timer.phase == "bidding":
+            deadline = datetime.now(timezone.utc) + timedelta(seconds=confirmation_seconds)
+            room.timer_phase = "going_once"
+            room.timer_remaining = confirmation_seconds
+            room.timer_deadline = deadline
+            db.commit()
             timer.phase = "going_once"
             timer.remaining = confirmation_seconds
             await ws_manager.broadcast(room_id, "auction_status", {"phase": "going_once", "message": "Going once..."})
@@ -95,6 +134,11 @@ async def _run_item_timer(room_id: int, confirmation_seconds: int):
             return
 
         if timer.phase == "going_once":
+            deadline = datetime.now(timezone.utc) + timedelta(seconds=confirmation_seconds)
+            room.timer_phase = "going_twice"
+            room.timer_remaining = confirmation_seconds
+            room.timer_deadline = deadline
+            db.commit()
             timer.phase = "going_twice"
             timer.remaining = confirmation_seconds
             await ws_manager.broadcast(room_id, "auction_status", {"phase": "going_twice", "message": "Going twice..."})
@@ -107,15 +151,49 @@ async def _run_item_timer(room_id: int, confirmation_seconds: int):
         db.close()
 
 
-def _start_timer(room: Room):
+def _start_timer(room: Room, remaining: int | None = None, phase: str = "bidding"):
     ws_manager.clear_timer_task(room.id)
+    seconds = room.timer_seconds if remaining is None else max(0, remaining)
+    now = datetime.now(timezone.utc)
+    room.timer_phase = phase
+    room.timer_remaining = seconds
+    room.timer_deadline = now + timedelta(seconds=seconds)
+    db = SessionLocal()
+    try:
+        persisted_room = db.query(Room).filter(Room.id == room.id).first()
+        if persisted_room:
+            persisted_room.timer_phase = phase
+            persisted_room.timer_remaining = seconds
+            persisted_room.timer_deadline = room.timer_deadline
+            db.commit()
+    finally:
+        db.close()
     timer = ws_manager.get_timer(room.id)
-    timer.remaining = room.timer_seconds
-    timer.phase = "bidding"
+    timer.remaining = seconds
+    timer.phase = phase
     timer.highest_bid_id = None
     timer.highest_amount = 0
     timer.highest_team_id = None
     timer.task = asyncio.create_task(_run_item_timer(room.id, room.confirmation_seconds))
+
+
+async def restore_live_timers():
+    """Recreate timer tasks after a backend restart using persisted DB deadlines."""
+    db = SessionLocal()
+    try:
+        rooms = db.query(Room).filter(Room.status == RoomStatus.LIVE, Room.current_item_id.isnot(None)).all()
+        for room in rooms:
+            if room.timer_phase not in ("bidding", "going_once", "going_twice"):
+                room.timer_phase = "bidding"
+                room.timer_remaining = room.timer_seconds
+                room.timer_deadline = datetime.now(timezone.utc) + timedelta(seconds=room.timer_seconds)
+                db.commit()
+            timer = ws_manager.get_timer(room.id)
+            timer.phase = room.timer_phase
+            timer.remaining = _remaining_from_deadline(room)
+            timer.task = asyncio.create_task(_run_item_timer(room.id, room.confirmation_seconds))
+    finally:
+        db.close()
 
 
 async def start_auction(db: Session, room: Room, user_id: int) -> AuctionStateResponse:
@@ -148,12 +226,18 @@ async def _activate_next_item(db: Session, room: Room):
         room.status = RoomStatus.ENDED
         room.ended_at = datetime.now(timezone.utc)
         room.current_item_id = None
+        room.timer_phase = "idle"
+        room.timer_remaining = 0
+        room.timer_deadline = None
         db.commit()
         await ws_manager.broadcast(room.id, "auction_status", {"phase": "ended", "message": "Auction ended"})
         return
 
     item.status = ItemStatus.ACTIVE
     room.current_item_id = item.id
+    room.timer_phase = "bidding"
+    room.timer_remaining = room.timer_seconds
+    room.timer_deadline = datetime.now(timezone.utc) + timedelta(seconds=room.timer_seconds)
     db.commit()
     _start_timer(room)
     await ws_manager.broadcast(
@@ -167,7 +251,10 @@ async def pause_auction(db: Session, room: Room, user_id: int) -> AuctionStateRe
     _require_auctioneer(db, room.id, user_id)
     if room.status != RoomStatus.LIVE:
         raise ValueError("Only live auctions can be paused")
+    timer = _sync_timer_from_room(room)
     ws_manager.clear_timer_task(room.id)
+    room.timer_remaining = timer.remaining
+    room.timer_deadline = None
     room.status = RoomStatus.PAUSED
     db.commit()
     await ws_manager.broadcast(room.id, "auction_status", {"phase": "paused", "message": "Auction paused"})
@@ -180,8 +267,8 @@ async def resume_auction(db: Session, room: Room, user_id: int) -> AuctionStateR
         raise ValueError("Auction is not paused")
     room.status = RoomStatus.LIVE
     db.commit()
-    _start_timer(room)
-    await ws_manager.broadcast(room.id, "auction_status", {"phase": "bidding", "message": "Auction resumed"})
+    _start_timer(room, remaining=room.timer_remaining, phase=room.timer_phase)
+    await ws_manager.broadcast(room.id, "auction_status", {"phase": room.timer_phase, "message": "Auction resumed"})
     return get_auction_state(db, room)
 
 
@@ -205,6 +292,9 @@ async def end_auction(db: Session, room: Room, user_id: int) -> AuctionStateResp
     room.status = RoomStatus.ENDED
     room.ended_at = datetime.now(timezone.utc)
     room.current_item_id = None
+    room.timer_phase = "idle"
+    room.timer_remaining = 0
+    room.timer_deadline = None
     db.commit()
     await ws_manager.broadcast(room.id, "auction_status", {"phase": "ended", "message": "Auction ended by auctioneer"})
     db.refresh(room)
@@ -234,11 +324,14 @@ async def _resolve_current_item(db: Session, room_id: int, force_unsold_if_no_bi
             "auction_status",
             {"phase": "sold", "item_id": item.id, "sold_price": bid.amount, "team_id": bid.team_id},
         )
-    elif force_unsold_if_no_bid or ws_manager.get_timer(room_id).phase == "going_twice":
+    elif force_unsold_if_no_bid or room.timer_phase == "going_twice":
         item.status = ItemStatus.UNSOLD
         await ws_manager.broadcast(room_id, "auction_status", {"phase": "unsold", "item_id": item.id})
 
     room.current_item_id = None
+    room.timer_phase = "idle"
+    room.timer_remaining = 0
+    room.timer_deadline = None
     db.commit()
 
     if room.status == RoomStatus.LIVE and not force_unsold_if_no_bid:
@@ -268,9 +361,6 @@ async def place_bid(db: Session, room: Room, user_id: int, data: PlaceBidRequest
     if not room.current_item_id:
         raise ValueError("No active item")
 
-    # Serialize bid validation and insertion for this item. PostgreSQL row-level
-    # locking prevents two concurrent bidders from validating against the same
-    # previous highest bid and both being accepted.
     item = (
         db.query(AuctionItem)
         .filter(AuctionItem.id == room.current_item_id)
@@ -291,8 +381,8 @@ async def place_bid(db: Session, room: Room, user_id: int, data: PlaceBidRequest
     if data.amount > team.purse_remaining:
         raise ValueError("Insufficient purse balance")
 
-    timer = ws_manager.get_timer(room.id)
-    if timer.phase not in ("bidding", "going_once", "going_twice"):
+    timer = _sync_timer_from_room(room)
+    if timer.phase not in ("bidding", "going_once", "going_twice") or timer.remaining <= 0:
         raise ValueError("Bidding is closed for this item")
 
     bid = Bid(
@@ -306,11 +396,20 @@ async def place_bid(db: Session, room: Room, user_id: int, data: PlaceBidRequest
     db.commit()
     db.refresh(bid)
 
+    new_deadline = datetime.now(timezone.utc) + timedelta(seconds=room.timer_seconds + room.auto_extend_seconds)
+    room.timer_phase = "bidding"
+    room.timer_remaining = room.timer_seconds + room.auto_extend_seconds
+    room.timer_deadline = new_deadline
+    db.commit()
+
     timer.phase = "bidding"
-    timer.remaining = room.timer_seconds + room.auto_extend_seconds
+    timer.remaining = room.timer_remaining
     timer.highest_bid_id = bid.id
     timer.highest_amount = bid.amount
     timer.highest_team_id = team.id
+
+    ws_manager.clear_timer_task(room.id)
+    timer.task = asyncio.create_task(_run_item_timer(room.id, room.confirmation_seconds))
 
     await ws_manager.broadcast(
         room.id,
