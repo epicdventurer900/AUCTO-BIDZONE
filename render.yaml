@@ -18,7 +18,19 @@ services:
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: "1440"
       - key: CORS_ORIGINS
-        value: "http://localhost:5173"
+        value: "https://aucto-bidzone-frontend.onrender.com"
+
+  - type: web
+    name: aucto-bidzone-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://aucto-bidzone-api.onrender.com/api/v1
+      - key: VITE_WS_URL
+        value: wss://aucto-bidzone-api.onrender.com
 
 databases:
   - name: aucto-bidzone-db
