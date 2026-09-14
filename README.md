@@ -107,21 +107,21 @@ ACCESS_TOKEN_EXPIRE_MINUTES=1440
 CORS_ORIGINS=http://localhost:5173
 ```
 
-Create the database, then install dependencies and start the API:
+Create the database, then install dependencies and start the API on **port 8001** (so it can run alongside another local service using port 8000):
 
 ```bash
 cd backend
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --port 8001
 ```
 
 The API will be available at:
 
-- API: `http://localhost:8000`
-- Interactive API docs: `http://localhost:8000/docs`
-- Health check: `http://localhost:8000/health`
+- API: `http://localhost:8001`
+- Interactive API docs: `http://localhost:8001/docs`
+- Health check: `http://localhost:8001/health`
 
 ### 3. Start the frontend
 
@@ -156,7 +156,7 @@ npm run preview   # Preview the production build
 ### Backend
 
 ```bash
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --port 8001
 alembic upgrade head
 ```
 
