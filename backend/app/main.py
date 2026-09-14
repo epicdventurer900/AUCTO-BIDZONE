@@ -76,9 +76,12 @@ def ensure_users_schema_compatibility():
 
 
 @app.on_event("startup")
-def on_startup():
+async def on_startup():
     Base.metadata.create_all(bind=engine)
     ensure_users_schema_compatibility()
+    from app.auction_engine.service import restore_live_timers
+
+    await restore_live_timers()
 
 
 @app.get("/")
