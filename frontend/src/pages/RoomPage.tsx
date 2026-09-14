@@ -88,7 +88,7 @@ export default function RoomPage() {
     ? (state.highest_bid ? state.highest_bid.amount + state.room.bid_increment : state.current_item.base_price)
     : 0
   const bidStep = state?.room.bid_increment || 1
-  const maxTimer = 30
+  const maxTimer = state ? state.room.timer_seconds + state.room.auto_extend_seconds : 1
   const timerPercent = state ? Math.max(0, Math.min(100, (state.timer_remaining / maxTimer) * 100)) : 0
   const activeTeams = state?.teams.filter((team) => team.purse_remaining > 0).length ?? 0
   const recentChat = useMemo(() => chat.slice(-6), [chat])
