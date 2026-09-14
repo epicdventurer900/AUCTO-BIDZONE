@@ -31,6 +31,10 @@ services:
         value: https://aucto-bidzone-api.onrender.com/api/v1
       - key: VITE_WS_URL
         value: wss://aucto-bidzone-api.onrender.com
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
 
 databases:
   - name: aucto-bidzone-db
