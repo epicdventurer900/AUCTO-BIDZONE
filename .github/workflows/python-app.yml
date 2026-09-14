@@ -42,6 +42,7 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}/backend
           DATABASE_URL: sqlite:///./ci.db
+          SECRET_KEY: ci-test-secret-key-must-be-at-least-32-characters-long
         run: python -m pytest
 
   frontend:
