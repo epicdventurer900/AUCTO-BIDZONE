@@ -73,9 +73,9 @@ aucto-bidzone/
 └── frontend/
     ├── src/
     │   ├── api/              # API client and types
-    │   ├── context/          # Authentication state
-    │   ├── hooks/            # Reusable React hooks
-    │   └── pages/            # Login, dashboard, and room screens
+    │   ├── context/           # Authentication state
+    │   ├── hooks/             # Reusable React hooks
+    │   └── pages/             # Login, dashboard, and room screens
     └── package.json
 ```
 
@@ -97,17 +97,17 @@ cd AUCTO-BIDZONE
 
 ### 2. Configure the backend
 
-From the `backend` directory, create a `.env` file:
+From the `backend` directory, create a `.env` file. A ready-to-copy template is provided at `backend/.env.example`:
 
 ```env
 DATABASE_URL=postgresql+psycopg2://postgres:your-password@localhost:5432/aucto_bidzone
-SECRET_KEY=replace-with-a-long-random-secret
+SECRET_KEY=replace-with-a-long-random-secret-at-least-32-characters
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=1440
 CORS_ORIGINS=http://localhost:5173
 ```
 
-Create the database, then install dependencies and start the API on **port 8001** (so it can run alongside another local service using port 8000):
+Create the PostgreSQL database, then install backend dependencies and start the API on **port 8001** (so it can run alongside another local service using port 8000):
 
 ```bash
 cd backend
@@ -125,7 +125,7 @@ The API will be available at:
 
 ### 3. Start the frontend
 
-Open a second terminal:
+Open a **second terminal from the project root**:
 
 ```bash
 cd frontend
@@ -135,11 +135,103 @@ npm run dev
 
 Open `http://localhost:5173` in your browser.
 
+The local Vite configuration proxies `/api` and `/api/v1` to the backend on port 8001, and the WebSocket fallback also uses port 8001. No separate `SOCKET_PORT` is required locally.
+
 For a deployed backend, configure the frontend environment as needed:
 
 ```env
 VITE_API_URL=https://your-api.example.com/api/v1
 VITE_WS_URL=wss://your-api.example.com
+```
+
+## Common issues & troubleshooting
+
+### 1. Dependency / installation problems
+
+AUCTO-BIDZONE uses **pip for the Python backend** and **npm for the React frontend**. Do not run `npm install` inside `backend`.
+
+Backend:
+
+```powershell
+cd backend
+python -m pip install -r requirements.txt
+python --version
+```
+
+Frontend:
+
+```powershell
+cd frontend
+npm install
+node -v
+npm run dev
+```
+
+If dependencies are inconsistent, remove `frontend/node_modules` and `frontend/package-lock.json`, then run `npm install` again. Do this only if a normal `npm install` does not fix the problem.
+
+### 2. Environment variable errors
+
+The backend requires `DATABASE_URL` and `SECRET_KEY`. The project uses **`SECRET_KEY`**, not `JWT_SECRET`, and the secret must be at least 32 characters long.
+
+Copy `backend/.env.example` to `backend/.env` and replace the placeholder values with your local PostgreSQL details and a private secret.
+
+Do **not** commit the real `.env` file to GitHub.
+
+### 3. Database connection errors
+
+AUCTO-BIDZONE uses **PostgreSQL**, not MongoDB or MySQL.
+
+Check that PostgreSQL is running and that the database named in `DATABASE_URL` exists. For example:
+
+```env
+DATABASE_URL=postgresql+psycopg2://postgres:your-password@localhost:5432/aucto_bidzone
+```
+
+Then apply migrations from `backend`:
+
+```powershell
+alembic upgrade head
+```
+
+### 4. WebSocket / CORS errors
+
+For local development the normal setup is:
+
+- Frontend: `http://localhost:5173`
+- REST API: `http://localhost:8001`
+- WebSocket: `ws://localhost:8001`
+
+There is **no separate `SOCKET_PORT`** in the local setup. REST and WebSocket traffic are served by the same FastAPI process.
+
+Make sure `CORS_ORIGINS` contains the frontend URL:
+
+```env
+CORS_ORIGINS=http://localhost:5173
+```
+
+If another application is already using port 8000, that is fine; AUCTO-BIDZONE is configured for 8001 locally.
+
+### 5. PowerShell `cd` errors
+
+If your terminal already shows:
+
+```text
+...\auction soft\backend>
+```
+
+do **not** run `cd backend` again. Start the backend directly:
+
+```powershell
+python -m uvicorn app.main:app --reload --port 8001
+```
+
+For the frontend, open a new terminal and start from the project root:
+
+```powershell
+cd "C:\Users\prayu\OneDrive\Desktop\auction soft"
+cd frontend
+npm install
+npm run dev
 ```
 
 ## Useful commands
