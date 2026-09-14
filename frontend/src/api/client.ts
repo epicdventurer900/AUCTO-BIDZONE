@@ -110,6 +110,6 @@ export const api = {
 
 export function getWsUrl(roomId: number): string {
   const token = getToken()
-  const base = (import.meta.env.VITE_WS_URL ?? 'ws://localhost:8000').replace(/\/$/, '')
+  const base = (import.meta.env.VITE_WS_URL ?? 'ws://localhost:8001').replace(/\/$/, '')
   return `${base}/api/v1/ws/rooms/${roomId}?token=${token}`
 }
