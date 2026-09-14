@@ -10,6 +10,10 @@ jobs:
   backend:
     name: Backend checks
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}/backend
+      DATABASE_URL: sqlite:///./ci.db
+      SECRET_KEY: ci-test-secret-key-must-be-at-least-32-characters-long
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -39,10 +43,6 @@ jobs:
 
       - name: Run backend tests
         working-directory: backend
-        env:
-          PYTHONPATH: ${{ github.workspace }}/backend
-          DATABASE_URL: sqlite:///./ci.db
-          SECRET_KEY: ci-test-secret-key-must-be-at-least-32-characters-long
         run: python -m pytest
 
   frontend:
