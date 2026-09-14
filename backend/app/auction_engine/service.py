@@ -326,7 +326,6 @@ async def _resolve_current_item(db: Session, room_id: int, force_unsold_if_no_bi
     if not bid and not should_unsell:
         return
 
-    event_type = None
     event_payload = None
 
     if bid:
@@ -334,8 +333,15 @@ async def _resolve_current_item(db: Session, room_id: int, force_unsold_if_no_bi
         if not team:
             db.rollback()
             raise ValueError("Winning team no longer exists")
+        if bid.amount > team.purse_remaining:
+            db.rollback()
+            raise ValueError("Winning bid exceeds the team's remaining purse")
 
         team.purse_remaining -= bid.amount
+        if team.purse_remaining < 0:
+            db.rollback()
+            raise ValueError("Team purse cannot become negative")
+
         item.status = ItemStatus.SOLD
         item.sold_price = bid.amount
         item.sold_to_team_id = bid.team_id
@@ -347,18 +353,17 @@ async def _resolve_current_item(db: Session, room_id: int, force_unsold_if_no_bi
                 message=f"{item.name} sold for {bid.amount}",
             )
         )
-        event_type = "sold"
         event_payload = {
             "phase": "sold",
             "item_id": item.id,
             "sold_price": bid.amount,
             "team_id": bid.team_id,
+            "purse_remaining": team.purse_remaining,
         }
     else:
         item.status = ItemStatus.UNSOLD
         item.sold_price = None
         item.sold_to_team_id = None
-        event_type = "unsold"
         event_payload = {"phase": "unsold", "item_id": item.id}
 
     room.current_item_id = None
@@ -405,7 +410,7 @@ async def place_bid(db: Session, room: Room, user_id: int, data: PlaceBidRequest
     if not item or item.status != ItemStatus.ACTIVE:
         raise ValueError("No active item")
 
-    team = db.query(Team).filter(Team.id == member.team_id).first()
+    team = db.query(Team).filter(Team.id == member.team_id).with_for_update().first()
     if not team:
         raise ValueError("Team not found")
 
