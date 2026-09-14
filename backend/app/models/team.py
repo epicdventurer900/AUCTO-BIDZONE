@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -9,6 +9,9 @@ from app.database.database import Base
 
 class Team(Base):
     __tablename__ = "teams"
+    __table_args__ = (
+        UniqueConstraint("room_id", "name", name="uq_teams_room_name"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     room_id: Mapped[int] = mapped_column(ForeignKey("rooms.id"), index=True)
