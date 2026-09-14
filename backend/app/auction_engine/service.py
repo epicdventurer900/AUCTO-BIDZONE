@@ -216,11 +216,6 @@ async def start_auction(db: Session, room: Room, user_id: int) -> AuctionStateRe
 
 
 async def _activate_next_item(db: Session, room: Room):
-    if room.current_item_id:
-        old = db.query(AuctionItem).filter(AuctionItem.id == room.current_item_id).first()
-        if old and old.status == ItemStatus.ACTIVE:
-            old.status = ItemStatus.UNSOLD
-
     item = _get_next_item(db, room.id)
     if not item:
         room.status = RoomStatus.ENDED
@@ -234,6 +229,8 @@ async def _activate_next_item(db: Session, room: Room):
         return
 
     item.status = ItemStatus.ACTIVE
+    item.sold_price = None
+    item.sold_to_team_id = None
     room.current_item_id = item.id
     room.timer_phase = "bidding"
     room.timer_remaining = room.timer_seconds
@@ -302,31 +299,67 @@ async def end_auction(db: Session, room: Room, user_id: int) -> AuctionStateResp
 
 
 async def _resolve_current_item(db: Session, room_id: int, force_unsold_if_no_bid: bool = False):
-    room = db.query(Room).filter(Room.id == room_id).first()
+    room = (
+        db.query(Room)
+        .filter(Room.id == room_id)
+        .with_for_update()
+        .first()
+    )
     if not room or not room.current_item_id:
         return
 
-    item = db.query(AuctionItem).filter(AuctionItem.id == room.current_item_id).with_for_update().first()
+    item = (
+        db.query(AuctionItem)
+        .filter(
+            AuctionItem.id == room.current_item_id,
+            AuctionItem.room_id == room_id,
+        )
+        .with_for_update()
+        .first()
+    )
     if not item or item.status != ItemStatus.ACTIVE:
         return
 
     bid = _get_highest_bid(db, item.id)
+    should_unsell = force_unsold_if_no_bid or room.timer_phase == "going_twice"
+
+    if not bid and not should_unsell:
+        return
+
+    event_type = None
+    event_payload = None
+
     if bid:
-        team = db.query(Team).filter(Team.id == bid.team_id).first()
-        if team:
-            team.purse_remaining -= bid.amount
+        team = db.query(Team).filter(Team.id == bid.team_id).with_for_update().first()
+        if not team:
+            db.rollback()
+            raise ValueError("Winning team no longer exists")
+
+        team.purse_remaining -= bid.amount
         item.status = ItemStatus.SOLD
         item.sold_price = bid.amount
         item.sold_to_team_id = bid.team_id
-        db.add(AuditLog(room_id=room_id, user_id=bid.user_id, action="item_sold", message=f"{item.name} sold for {bid.amount}"))
-        await ws_manager.broadcast(
-            room_id,
-            "auction_status",
-            {"phase": "sold", "item_id": item.id, "sold_price": bid.amount, "team_id": bid.team_id},
+        db.add(
+            AuditLog(
+                room_id=room_id,
+                user_id=bid.user_id,
+                action="item_sold",
+                message=f"{item.name} sold for {bid.amount}",
+            )
         )
-    elif force_unsold_if_no_bid or room.timer_phase == "going_twice":
+        event_type = "sold"
+        event_payload = {
+            "phase": "sold",
+            "item_id": item.id,
+            "sold_price": bid.amount,
+            "team_id": bid.team_id,
+        }
+    else:
         item.status = ItemStatus.UNSOLD
-        await ws_manager.broadcast(room_id, "auction_status", {"phase": "unsold", "item_id": item.id})
+        item.sold_price = None
+        item.sold_to_team_id = None
+        event_type = "unsold"
+        event_payload = {"phase": "unsold", "item_id": item.id}
 
     room.current_item_id = None
     room.timer_phase = "idle"
@@ -334,10 +367,12 @@ async def _resolve_current_item(db: Session, room_id: int, force_unsold_if_no_bi
     room.timer_deadline = None
     db.commit()
 
+    await ws_manager.broadcast(room_id, "auction_status", event_payload)
+
     if room.status == RoomStatus.LIVE and not force_unsold_if_no_bid:
         await asyncio.sleep(2)
         room = db.query(Room).filter(Room.id == room_id).first()
-        if room and room.status == RoomStatus.LIVE:
+        if room and room.status == RoomStatus.LIVE and not room.current_item_id:
             await _activate_next_item(db, room)
 
 
