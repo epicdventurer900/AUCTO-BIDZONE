@@ -216,7 +216,7 @@ async def _resolve_current_item(db: Session, room_id: int, force_unsold_if_no_bi
     if not room or not room.current_item_id:
         return
 
-    item = db.query(AuctionItem).filter(AuctionItem.id == room.current_item_id).first()
+    item = db.query(AuctionItem).filter(AuctionItem.id == room.current_item_id).with_for_update().first()
     if not item or item.status != ItemStatus.ACTIVE:
         return
 
@@ -268,7 +268,15 @@ async def place_bid(db: Session, room: Room, user_id: int, data: PlaceBidRequest
     if not room.current_item_id:
         raise ValueError("No active item")
 
-    item = db.query(AuctionItem).filter(AuctionItem.id == room.current_item_id).first()
+    # Serialize bid validation and insertion for this item. PostgreSQL row-level
+    # locking prevents two concurrent bidders from validating against the same
+    # previous highest bid and both being accepted.
+    item = (
+        db.query(AuctionItem)
+        .filter(AuctionItem.id == room.current_item_id)
+        .with_for_update()
+        .first()
+    )
     if not item or item.status != ItemStatus.ACTIVE:
         raise ValueError("No active item")
 
