@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router'
 import { useAuth } from '../context/useAuth'
 import './AppShell.css'
 import './AppShellOverrides.css'
