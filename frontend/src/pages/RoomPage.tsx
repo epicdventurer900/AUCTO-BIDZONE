@@ -6,8 +6,7 @@ import type { AuctionItem, AuctionReport, AuctionState, ChatMessage } from '../a
 import { useRoomSocket } from '../hooks/useRoomSocket'
 import './RoomPage.css'
 
-const text = (value: unknown) => typeof value === 'string' ? value : ''
-const numberValue = (value: unknown) => typeof value === 'number' ? value : 0
+const displayValue = (value: unknown) => value === undefined || value === null ? '' : String(value)
 
 export default function RoomPage() {
   const { id } = useParams<{ id: string }>()
@@ -21,7 +20,7 @@ export default function RoomPage() {
   const [itemPrice, setItemPrice] = useState(10)
   const [itemCategory, setItemCategory] = useState('')
   const [itemDescription, setItemDescription] = useState('')
-  const [itemDetails, setItemDetails] = useState<Record<string, string | number>>({})
+  const [itemDetails, setItemDetails] = useState<Record<string, string>>({})
   const [bidAmount, setBidAmount] = useState(0)
   const [chatText, setChatText] = useState('')
 
@@ -30,18 +29,13 @@ export default function RoomPage() {
     setState((prev) => (prev ? { ...prev, timer_remaining: remaining, phase } : prev))
   }, [])
   const handleSocketError = useCallback((message: string) => setError(message), [])
-  const { connected, chatMessages, setChatMessages, send } = useRoomSocket(
-    roomId, onSync, handleTimerUpdate, handleSocketError,
-  )
+  const { connected, chatMessages, setChatMessages, send } = useRoomSocket(roomId, onSync, handleTimerUpdate, handleSocketError)
 
   useEffect(() => {
     Promise.all([api.getAuctionState(roomId), api.listItems(roomId), api.getChat(roomId)])
       .then(([s, i, c]) => {
         setState(s); setItems(i); setChat(c); setChatMessages(c)
-        if (s.current_item) {
-          const min = s.highest_bid ? s.highest_bid.amount + s.room.bid_increment : s.current_item.base_price
-          setBidAmount(min)
-        }
+        if (s.current_item) setBidAmount(s.highest_bid ? s.highest_bid.amount + s.room.bid_increment : s.current_item.base_price)
         if (s.room.status === 'ended') api.getReport(roomId).then(setReport)
       })
       .catch((e) => setError(e.message))
@@ -49,9 +43,7 @@ export default function RoomPage() {
 
   useEffect(() => {
     if (!state?.current_item) { setBidAmount(0); return }
-    setBidAmount(state.highest_bid
-      ? state.highest_bid.amount + state.room.bid_increment
-      : state.current_item.base_price)
+    setBidAmount(state.highest_bid ? state.highest_bid.amount + state.room.bid_increment : state.current_item.base_price)
   }, [state?.current_item, state?.current_item?.base_price, state?.highest_bid, state?.highest_bid?.amount, state?.room.bid_increment])
 
   useEffect(() => {
@@ -62,34 +54,19 @@ export default function RoomPage() {
   useEffect(() => { if (chatMessages.length) setChat(chatMessages) }, [chatMessages])
 
   const isSports = state?.room.auction_type === 'sports'
-
   const detailFields = isSports
-    ? [
-        ['country', 'Country', 'text'], ['role', 'Playing role', 'text'], ['batting_style', 'Batting style', 'text'],
-        ['bowling_style', 'Bowling style', 'text'], ['age', 'Age', 'number'], ['matches', 'Matches', 'number'],
-        ['runs', 'Runs', 'number'], ['wickets', 'Wickets', 'number'], ['rating', 'Rating', 'number'],
-      ] as const
-    : [
-        ['brand', 'Brand', 'text'], ['model', 'Model', 'text'], ['condition', 'Condition', 'text'],
-        ['year', 'Year', 'number'], ['quantity', 'Quantity', 'number'], ['location', 'Location', 'text'],
-      ] as const
-
-  const handleDetailChange = (key: string, value: string) => {
-    setItemDetails((prev) => ({ ...prev, [key]: value }))
-  }
+    ? [['country', 'Country', 'text'], ['role', 'Playing role', 'text'], ['batting_style', 'Batting style', 'text'], ['bowling_style', 'Bowling style', 'text'], ['age', 'Age', 'number'], ['matches', 'Matches', 'number'], ['runs', 'Runs', 'number'], ['wickets', 'Wickets', 'number'], ['rating', 'Rating', 'number']]
+    : [['brand', 'Brand', 'text'], ['model', 'Model', 'text'], ['condition', 'Condition', 'text'], ['year', 'Year', 'number'], ['quantity', 'Quantity', 'number'], ['location', 'Location', 'text']]
 
   const handleAddItem = async (e: FormEvent) => {
     e.preventDefault()
     try {
-      const cleanedDetails = Object.fromEntries(
-        Object.entries(itemDetails).filter(([, value]) => String(value).trim() !== ''),
-      )
+      const extra_data = Object.fromEntries(Object.entries(itemDetails).filter(([, value]) => value.trim() !== ''))
       const item = await api.addItem(roomId, {
-        name: itemName.trim(),
-        base_price: itemPrice,
+        name: itemName.trim(), base_price: itemPrice,
         category: itemCategory.trim() || undefined,
         description: itemDescription.trim() || undefined,
-        extra_data: cleanedDetails,
+        extra_data,
       })
       setItems((prev) => [...prev, item])
       setItemName(''); setItemPrice(10); setItemCategory(''); setItemDescription(''); setItemDetails({})
@@ -105,10 +82,8 @@ export default function RoomPage() {
 
   const handleBid = async (e: FormEvent) => {
     e.preventDefault()
-    try {
-      await api.placeBid(roomId, bidAmount)
-      setState(await api.getAuctionState(roomId))
-    } catch (err) { setError(err instanceof Error ? err.message : 'Bid failed') }
+    try { await api.placeBid(roomId, bidAmount); setState(await api.getAuctionState(roomId)) }
+    catch (err) { setError(err instanceof Error ? err.message : 'Bid failed') }
   }
 
   const handleChat = async (e: FormEvent) => {
@@ -117,9 +92,7 @@ export default function RoomPage() {
     send('send_chat', { message: chatText.trim() }); setChatText('')
   }
 
-  const minimumBid = state?.current_item
-    ? (state.highest_bid ? state.highest_bid.amount + state.room.bid_increment : state.current_item.base_price)
-    : 0
+  const minimumBid = state?.current_item ? (state.highest_bid ? state.highest_bid.amount + state.room.bid_increment : state.current_item.base_price) : 0
   const bidStep = state?.room.bid_increment || 1
   const maxTimer = state ? state.room.timer_seconds + state.room.auto_extend_seconds : 1
   const timerPercent = state ? Math.max(0, Math.min(100, (state.timer_remaining / maxTimer) * 100)) : 0
@@ -135,90 +108,31 @@ export default function RoomPage() {
 
   return (
     <div className="page room-page">
-      <header className="room-topbar topbar">
-        <div>
-          <Link to="/" className="back-link">← Dashboard</Link>
-          <div className="room-title-row">
-            <div className="room-orb">AB</div>
-            <div>
-              <h1>{room.name}</h1>
-              <p>ROOM <strong>{room.room_code}</strong> · <span className={`badge badge-${room.status}`}>{room.status}</span>{connected && <span className="live-dot"> ● LIVE SYNC</span>}</p>
-            </div>
-          </div>
-        </div>
-        {isLive && <div className="arena-signal"><span />REAL-TIME ARENA</div>}
-      </header>
-
+      <header className="room-topbar topbar"><div><Link to="/" className="back-link">← Dashboard</Link><div className="room-title-row"><div className="room-orb">AB</div><div><h1>{room.name}</h1><p>ROOM <strong>{room.room_code}</strong> · <span className={`badge badge-${room.status}`}>{room.status}</span>{connected && <span className="live-dot"> ● LIVE SYNC</span>}</p></div></div></div>{isLive && <div className="arena-signal"><span />REAL-TIME ARENA</div>}</header>
       {error && <p className="error">{error}</p>}
 
-      {isSetup && (
-        <section className="panel setup-arena">
-          <div className="section-heading"><div><span className="eyebrow">PRE-AUCTION · {isSports ? 'SPORTS MODE' : 'GENERAL MODE'}</span><h2>{isSports ? 'Build your player pool' : 'Build your item catalog'}</h2></div><span className="room-count">{items.length} lots</span></div>
-          <form onSubmit={handleAddItem} className="setup-form">
-            <div className="inline-form">
-              <input placeholder={isSports ? 'Player name' : 'Item name'} value={itemName} onChange={(e) => setItemName(e.target.value)} required />
-              <input type="number" min={0} value={itemPrice} onChange={(e) => setItemPrice(Number(e.target.value))} aria-label="Base price" />
-              <input placeholder="Category (optional)" value={itemCategory} onChange={(e) => setItemCategory(e.target.value)} />
-            </div>
-            <textarea placeholder="Short description (optional)" value={itemDescription} onChange={(e) => setItemDescription(e.target.value)} rows={2} />
-            <div className="detail-grid">
-              {detailFields.map(([key, label, type]) => (
-                <label key={key}>{label}<input type={type} value={itemDetails[key] ?? ''} onChange={(e) => handleDetailChange(key, e.target.value)} placeholder={label} /></label>
-              ))}
-            </div>
-            <button type="submit">＋ Add {isSports ? 'player' : 'item'}</button>
-          </form>
-          <div className="setup-list">{items.map((item, index) => <div className="setup-item" key={item.id}><span>{String(index + 1).padStart(2, '0')}</span><strong>{item.name}</strong><small>{item.category || (isSports ? 'Player' : 'Item')} · {item.base_price} · {item.status}</small></div>)}</div>
-          {items.length > 0 && <button className="launch-button" onClick={() => auctionAction(() => api.startAuction(roomId))}>Launch Auction Arena →</button>}
-        </section>
-      )}
+      {isSetup && <section className="panel setup-arena">
+        <div className="section-heading"><div><span className="eyebrow">PRE-AUCTION · {isSports ? 'SPORTS MODE' : 'GENERAL MODE'}</span><h2>{isSports ? 'Build your player pool' : 'Build your item catalog'}</h2></div><span className="room-count">{items.length} lots</span></div>
+        <form onSubmit={handleAddItem} className="setup-form">
+          <div className="inline-form"><input placeholder={isSports ? 'Player name' : 'Item name'} value={itemName} onChange={(e) => setItemName(e.target.value)} required /><input type="number" min={0} value={itemPrice} onChange={(e) => setItemPrice(Number(e.target.value))} aria-label="Base price" /><input placeholder="Category (optional)" value={itemCategory} onChange={(e) => setItemCategory(e.target.value)} /></div>
+          <textarea placeholder="Short description (optional)" value={itemDescription} onChange={(e) => setItemDescription(e.target.value)} rows={2} />
+          <div className="detail-grid">{detailFields.map(([key, label, type]) => <label key={key}>{label}<input type={type} value={itemDetails[key] ?? ''} onChange={(e) => setItemDetails((prev) => ({ ...prev, [key]: e.target.value }))} placeholder={label} /></label>)}</div>
+          <button type="submit">＋ Add {isSports ? 'player' : 'item'}</button>
+        </form>
+        <div className="setup-list">{items.map((item, index) => <div className="setup-item" key={item.id}><span>{String(index + 1).padStart(2, '0')}</span><strong>{item.name}</strong><small>{item.category || (isSports ? 'Player' : 'Item')} · {item.base_price} · {item.status}</small></div>)}</div>
+        {items.length > 0 && <button className="launch-button" onClick={() => auctionAction(() => api.startAuction(roomId))}>Launch Auction Arena →</button>}
+      </section>}
 
-      {isLive && (
-        <>
-          <section className="arena-stats">
-            <div><span>ROOM STATUS</span><strong>{room.status.toUpperCase()}</strong></div>
-            <div><span>ACTIVE TEAMS</span><strong>{activeTeams}<small> / {teams.length}</small></strong></div>
-            <div><span>LOTS QUEUED</span><strong>{items.length}</strong></div>
-            <div><span>CONNECTION</span><strong className="connected-value">● {connected ? 'ONLINE' : 'OFFLINE'}</strong></div>
-          </section>
-
-          <div className="auction-layout arena-layout">
-            <main className="panel auction-main arena-card">
-              <div className="arena-header"><div><span className="eyebrow">{phase.replace('_', ' ').toUpperCase()} · {isSports ? 'SPORTS' : 'GENERAL'}</span><h2>LIVE AUCTION</h2></div><div className="connection-pill"><span /> WebSocket</div></div>
-
-              <div className="timer-block arena-timer">
-                <div className="timer-ring" style={{ '--timer-progress': `${timerPercent}%` } as React.CSSProperties}><span>{timer_remaining}</span><small>SEC</small></div>
-                <div><span className="phase">BIDDING WINDOW</span><p>{timer_remaining > 10 ? 'Bids are open' : timer_remaining > 0 ? 'Closing soon' : 'Waiting for sync'}</p></div>
-              </div>
-
-              {current_item ? (
-                <div className="current-item-card">
-                  <div className="item-spotlight"><span className="spotlight-label">LOT {String(current_item.id).padStart(3, '0')}</span><div className="item-avatar">{current_item.name.slice(0, 2).toUpperCase()}</div></div>
-                  <div className="item-info"><span className="eyebrow">CURRENT {isSports ? 'PLAYER' : 'LOT'}</span><h3>{current_item.name}</h3><p>{current_item.category || (isSports ? 'Sports player' : 'Auction item')} · Base price <strong>{current_item.base_price}</strong></p>{current_item.description && <p>{current_item.description}</p>}
-                    {Object.keys(currentDetails).length > 0 && <div className="detail-chips">{Object.entries(currentDetails).map(([key, value]) => <span key={key}><small>{key.replace(/_/g, ' ')}</small><strong>{text(value) || numberValue(value)}</strong></span>)}</div>}
-                  </div>
-                  <div className="bid-display"><span>CURRENT BID</span><strong>{highest_bid ? highest_bid.amount : current_item.base_price}</strong>{highest_bid && <small>Team #{highest_bid.team_id}</small>}</div>
-                </div>
-              ) : <div className="waiting-card"><span>◈</span><h3>Waiting for next item…</h3><p>The auction engine is ready for the next lot.</p></div>}
-
-              {current_item && <form onSubmit={handleBid} className="bid-console">
-                <div className="bid-input-wrap"><label htmlFor="bid">YOUR BID</label><input id="bid" type="number" min={minimumBid} step={bidStep} value={bidAmount} onChange={(e) => setBidAmount(Number(e.target.value))} /></div>
-                <button type="button" className="btn-secondary step-button" onClick={() => setBidAmount(Math.max(minimumBid, bidAmount - bidStep))}>−</button>
-                <button type="button" className="btn-secondary step-button" onClick={() => setBidAmount(Math.max(minimumBid, bidAmount + bidStep))}>＋</button>
-                <button type="submit" className="place-bid-button">PLACE BID <span>↗</span></button>
-              </form>}
-
-              <div className="auction-controls"><button className="btn-secondary" onClick={() => auctionAction(() => api.pauseAuction(roomId))}>Ⅱ Pause</button><button className="btn-secondary" onClick={() => auctionAction(() => api.resumeAuction(roomId))}>▶ Resume</button><button className="btn-secondary" onClick={() => auctionAction(() => api.nextItem(roomId)}>Next lot →</button><button className="btn-danger" onClick={() => auctionAction(() => api.endAuction(roomId))}>End auction</button></div>
-            </main>
-
-            <aside className="arena-sidebar">
-              <section className="panel team-panel"><div className="section-heading"><div><span className="eyebrow">LEADERBOARD</span><h3>Teams & purse</h3></div><span className="room-count">{teams.length}</span></div><div className="team-list">{teams.map((team, index) => <div className="team-row" key={team.id}><span className="team-rank">{String(index + 1).padStart(2, '0')}</span><div className="team-meta"><strong>{team.name}</strong><div className="purse-bar"><i style={{ width: `${team.purse_total ? Math.max(0, Math.min(100, (team.purse_remaining / team.purse_total) * 100)) : 0}%` }} /></div></div><span className="team-purse">{team.purse_remaining}<small> / {team.purse_total}</small></span></div>)}</div></section>
-
-              <section className="panel chat-panel"><div className="section-heading"><div><span className="eyebrow">LIVE FEED</span><h3>Room chat</h3></div><span className="connection-pill"><span /> Live</span></div><div className="chat-box arena-chat">{recentChat.length ? recentChat.map((message) => <div key={message.id} className="chat-msg"><span className="chat-user">#{message.user_id}</span><p>{message.message}</p></div>) : <div className="chat-empty">No messages yet. Start the room conversation.</div>}</div><form onSubmit={handleChat} className="chat-input"><input value={chatText} onChange={(e) => setChatText(e.target.value)} placeholder="Send a message…" aria-label="Room message" /><button type="submit">↗</button></form></section>
-            </aside>
-          </div>
-        </>
-      )}
+      {isLive && <><section className="arena-stats"><div><span>ROOM STATUS</span><strong>{room.status.toUpperCase()}</strong></div><div><span>ACTIVE TEAMS</span><strong>{activeTeams}<small> / {teams.length}</small></strong></div><div><span>LOTS QUEUED</span><strong>{items.length}</strong></div><div><span>CONNECTION</span><strong className="connected-value">● {connected ? 'ONLINE' : 'OFFLINE'}</strong></div></section>
+        <div className="auction-layout arena-layout"><main className="panel auction-main arena-card">
+          <div className="arena-header"><div><span className="eyebrow">{phase.replace('_', ' ').toUpperCase()} · {isSports ? 'SPORTS' : 'GENERAL'}</span><h2>LIVE AUCTION</h2></div><div className="connection-pill"><span /> WebSocket</div></div>
+          <div className="timer-block arena-timer"><div className="timer-ring" style={{ '--timer-progress': `${timerPercent}%` } as React.CSSProperties}><span>{timer_remaining}</span><small>SEC</small></div><div><span className="phase">BIDDING WINDOW</span><p>{timer_remaining > 10 ? 'Bids are open' : timer_remaining > 0 ? 'Closing soon' : 'Waiting for sync'}</p></div></div>
+          {current_item ? <div className="current-item-card"><div className="item-spotlight"><span className="spotlight-label">LOT {String(current_item.id).padStart(3, '0')}</span><div className="item-avatar">{current_item.name.slice(0, 2).toUpperCase()}</div></div><div className="item-info"><span className="eyebrow">CURRENT {isSports ? 'PLAYER' : 'LOT'}</span><h3>{current_item.name}</h3><p>{current_item.category || (isSports ? 'Sports player' : 'Auction item')} · Base price <strong>{current_item.base_price}</strong></p>{current_item.description && <p>{current_item.description}</p>}{Object.keys(currentDetails).length > 0 && <div className="detail-chips">{Object.entries(currentDetails).map(([key, value]) => <span key={key}><small>{key.replace(/_/g, ' ')}</small><strong>{displayValue(value)}</strong></span>)}</div>}</div><div className="bid-display"><span>CURRENT BID</span><strong>{highest_bid ? highest_bid.amount : current_item.base_price}</strong>{highest_bid && <small>Team #{highest_bid.team_id}</small>}</div></div> : <div className="waiting-card"><span>◈</span><h3>Waiting for next item…</h3><p>The auction engine is ready for the next lot.</p></div>}
+          {current_item && <form onSubmit={handleBid} className="bid-console"><div className="bid-input-wrap"><label htmlFor="bid">YOUR BID</label><input id="bid" type="number" min={minimumBid} step={bidStep} value={bidAmount} onChange={(e) => setBidAmount(Number(e.target.value))} /></div><button type="button" className="btn-secondary step-button" onClick={() => setBidAmount(Math.max(minimumBid, bidAmount - bidStep))}>−</button><button type="button" className="btn-secondary step-button" onClick={() => setBidAmount(Math.max(minimumBid, bidAmount + bidStep))}>＋</button><button type="submit" className="place-bid-button">PLACE BID <span>↗</span></button></form>}
+          <div className="auction-controls"><button className="btn-secondary" onClick={() => auctionAction(() => api.pauseAuction(roomId))}>Ⅱ Pause</button><button className="btn-secondary" onClick={() => auctionAction(() => api.resumeAuction(roomId))}>▶ Resume</button><button className="btn-secondary" onClick={() => auctionAction(() => api.nextItem(roomId))}>Next lot →</button><button className="btn-danger" onClick={() => auctionAction(() => api.endAuction(roomId))}>End auction</button></div>
+        </main>
+        <aside className="arena-sidebar"><section className="panel team-panel"><div className="section-heading"><div><span className="eyebrow">LEADERBOARD</span><h3>Teams & purse</h3></div><span className="room-count">{teams.length}</span></div><div className="team-list">{teams.map((team, index) => <div className="team-row" key={team.id}><span className="team-rank">{String(index + 1).padStart(2, '0')}</span><div className="team-meta"><strong>{team.name}</strong><div className="purse-bar"><i style={{ width: `${team.purse_total ? Math.max(0, Math.min(100, (team.purse_remaining / team.purse_total) * 100)) : 0}%` }} /></div></div><span className="team-purse">{team.purse_remaining}<small> / {team.purse_total}</small></span></div>)}</div></section>
+          <section className="panel chat-panel"><div className="section-heading"><div><span className="eyebrow">LIVE FEED</span><h3>Room chat</h3></div><span className="connection-pill"><span /> Live</span></div><div className="chat-box arena-chat">{recentChat.length ? recentChat.map((message) => <div key={message.id} className="chat-msg"><span className="chat-user">#{message.user_id}</span><p>{message.message}</p></div>) : <div className="chat-empty">No messages yet. Start the room conversation.</div>}</div><form onSubmit={handleChat} className="chat-input"><input value={chatText} onChange={(e) => setChatText(e.target.value)} placeholder="Send a message…" aria-label="Room message" /><button type="submit">↗</button></form></section></aside></div></>}
 
       {room.status === 'ended' && report && <section className="panel report-panel"><div className="eyebrow">SESSION COMPLETE</div><h2>Auction Report</h2><div className="report-stats"><div><span>SOLD</span><strong>{report.sold_count}</strong></div><div><span>UNSOLD</span><strong>{report.unsold_count}</strong></div><div><span>TOTAL SPEND</span><strong>{report.total_spend}</strong></div></div><div className="report-grid"><div><h3>Sold</h3><ul>{report.sold_items.map((item) => <li key={item.id}>{item.name}<strong>{item.sold_price}</strong></li>)}</ul></div><div><h3>Unsold</h3><ul>{report.unsold_items.map((item) => <li key={item.id}>{item.name}</li>)}</ul></div></div></section>}
     </div>
