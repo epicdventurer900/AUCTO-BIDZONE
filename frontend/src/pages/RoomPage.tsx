@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { CSSProperties, FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { AuctionItem, AuctionReport, AuctionState, ChatMessage } from '../api/types'
@@ -7,6 +7,10 @@ import { useRoomSocket } from '../hooks/useRoomSocket'
 import './RoomPage.css'
 
 const displayValue = (value: unknown) => value === undefined || value === null ? '' : String(value)
+const imageUrl = (item: AuctionItem | null) => {
+  const value = item?.extra_data?.image_url
+  return typeof value === 'string' && value.trim() ? value.trim() : ''
+}
 
 export default function RoomPage() {
   const { id } = useParams<{ id: string }>()
@@ -20,6 +24,7 @@ export default function RoomPage() {
   const [itemPrice, setItemPrice] = useState(10)
   const [itemCategory, setItemCategory] = useState('')
   const [itemDescription, setItemDescription] = useState('')
+  const [itemImageUrl, setItemImageUrl] = useState('')
   const [itemDetails, setItemDetails] = useState<Record<string, string>>({})
   const [bidAmount, setBidAmount] = useState(0)
   const [chatText, setChatText] = useState('')
@@ -61,7 +66,10 @@ export default function RoomPage() {
   const handleAddItem = async (e: FormEvent) => {
     e.preventDefault()
     try {
-      const extra_data = Object.fromEntries(Object.entries(itemDetails).filter(([, value]) => value.trim() !== ''))
+      const extra_data = Object.fromEntries([
+        ...Object.entries(itemDetails).filter(([, value]) => value.trim() !== ''),
+        ...(itemImageUrl.trim() ? [['image_url', itemImageUrl.trim()]] : []),
+      ])
       const item = await api.addItem(roomId, {
         name: itemName.trim(), base_price: itemPrice,
         category: itemCategory.trim() || undefined,
@@ -69,7 +77,7 @@ export default function RoomPage() {
         extra_data,
       })
       setItems((prev) => [...prev, item])
-      setItemName(''); setItemPrice(10); setItemCategory(''); setItemDescription(''); setItemDetails({})
+      setItemName(''); setItemPrice(10); setItemCategory(''); setItemDescription(''); setItemImageUrl(''); setItemDetails({})
     } catch (err) { setError(err instanceof Error ? err.message : 'Failed to add item') }
   }
 
@@ -105,6 +113,7 @@ export default function RoomPage() {
   const isSetup = room.status === 'setup' || room.status === 'draft'
   const isLive = room.status === 'live' || room.status === 'paused'
   const currentDetails = current_item?.extra_data ?? {}
+  const currentImage = imageUrl(current_item)
 
   return (
     <div className="page room-page">
@@ -115,19 +124,20 @@ export default function RoomPage() {
         <div className="section-heading"><div><span className="eyebrow">PRE-AUCTION · {isSports ? 'SPORTS MODE' : 'GENERAL MODE'}</span><h2>{isSports ? 'Build your player pool' : 'Build your item catalog'}</h2></div><span className="room-count">{items.length} lots</span></div>
         <form onSubmit={handleAddItem} className="setup-form">
           <div className="inline-form"><input placeholder={isSports ? 'Player name' : 'Item name'} value={itemName} onChange={(e) => setItemName(e.target.value)} required /><input type="number" min={0} value={itemPrice} onChange={(e) => setItemPrice(Number(e.target.value))} aria-label="Base price" /><input placeholder="Category (optional)" value={itemCategory} onChange={(e) => setItemCategory(e.target.value)} /></div>
+          <input type="url" placeholder="Photo / image URL (optional)" value={itemImageUrl} onChange={(e) => setItemImageUrl(e.target.value)} />
           <textarea placeholder="Short description (optional)" value={itemDescription} onChange={(e) => setItemDescription(e.target.value)} rows={2} />
           <div className="detail-grid">{detailFields.map(([key, label, type]) => <label key={key}>{label}<input type={type} value={itemDetails[key] ?? ''} onChange={(e) => setItemDetails((prev) => ({ ...prev, [key]: e.target.value }))} placeholder={label} /></label>)}</div>
           <button type="submit">＋ Add {isSports ? 'player' : 'item'}</button>
         </form>
-        <div className="setup-list">{items.map((item, index) => <div className="setup-item" key={item.id}><span>{String(index + 1).padStart(2, '0')}</span><strong>{item.name}</strong><small>{item.category || (isSports ? 'Player' : 'Item')} · {item.base_price} · {item.status}</small></div>)}</div>
+        <div className="setup-list">{items.map((item, index) => <div className="setup-item" key={item.id}><div className="setup-item-media">{imageUrl(item) ? <img src={imageUrl(item)} alt={item.name} loading="lazy" /> : <span>{item.name.slice(0, 2).toUpperCase()}</span>}</div><div><span className="setup-number">{String(index + 1).padStart(2, '0')}</span><strong>{item.name}</strong><small>{item.category || (isSports ? 'Player' : 'Item')} · {item.base_price} · {item.status}</small></div></div>)}</div>
         {items.length > 0 && <button className="launch-button" onClick={() => auctionAction(() => api.startAuction(roomId))}>Launch Auction Arena →</button>}
       </section>}
 
       {isLive && <><section className="arena-stats"><div><span>ROOM STATUS</span><strong>{room.status.toUpperCase()}</strong></div><div><span>ACTIVE TEAMS</span><strong>{activeTeams}<small> / {teams.length}</small></strong></div><div><span>LOTS QUEUED</span><strong>{items.length}</strong></div><div><span>CONNECTION</span><strong className="connected-value">● {connected ? 'ONLINE' : 'OFFLINE'}</strong></div></section>
         <div className="auction-layout arena-layout"><main className="panel auction-main arena-card">
           <div className="arena-header"><div><span className="eyebrow">{phase.replace('_', ' ').toUpperCase()} · {isSports ? 'SPORTS' : 'GENERAL'}</span><h2>LIVE AUCTION</h2></div><div className="connection-pill"><span /> WebSocket</div></div>
-          <div className="timer-block arena-timer"><div className="timer-ring" style={{ '--timer-progress': `${timerPercent}%` } as React.CSSProperties}><span>{timer_remaining}</span><small>SEC</small></div><div><span className="phase">BIDDING WINDOW</span><p>{timer_remaining > 10 ? 'Bids are open' : timer_remaining > 0 ? 'Closing soon' : 'Waiting for sync'}</p></div></div>
-          {current_item ? <div className="current-item-card"><div className="item-spotlight"><span className="spotlight-label">LOT {String(current_item.id).padStart(3, '0')}</span><div className="item-avatar">{current_item.name.slice(0, 2).toUpperCase()}</div></div><div className="item-info"><span className="eyebrow">CURRENT {isSports ? 'PLAYER' : 'LOT'}</span><h3>{current_item.name}</h3><p>{current_item.category || (isSports ? 'Sports player' : 'Auction item')} · Base price <strong>{current_item.base_price}</strong></p>{current_item.description && <p>{current_item.description}</p>}{Object.keys(currentDetails).length > 0 && <div className="detail-chips">{Object.entries(currentDetails).map(([key, value]) => <span key={key}><small>{key.replace(/_/g, ' ')}</small><strong>{displayValue(value)}</strong></span>)}</div>}</div><div className="bid-display"><span>CURRENT BID</span><strong>{highest_bid ? highest_bid.amount : current_item.base_price}</strong>{highest_bid && <small>Team #{highest_bid.team_id}</small>}</div></div> : <div className="waiting-card"><span>◈</span><h3>Waiting for next item…</h3><p>The auction engine is ready for the next lot.</p></div>}
+          <div className="timer-block arena-timer"><div className="timer-ring" style={{ '--timer-progress': `${timerPercent}%` } as CSSProperties}><span>{timer_remaining}</span><small>SEC</small></div><div><span className="phase">BIDDING WINDOW</span><p>{timer_remaining > 10 ? 'Bids are open' : timer_remaining > 0 ? 'Closing soon' : 'Waiting for sync'}</p></div></div>
+          {current_item ? <div className="current-item-card"><div className="item-spotlight"><span className="spotlight-label">LOT {String(current_item.id).padStart(3, '0')}</span><div className="item-avatar">{currentImage ? <img src={currentImage} alt={current_item.name} /> : current_item.name.slice(0, 2).toUpperCase()}</div></div><div className="item-info"><span className="eyebrow">CURRENT {isSports ? 'PLAYER' : 'LOT'}</span><h3>{current_item.name}</h3><p>{current_item.category || (isSports ? 'Sports player' : 'Auction item')} · Base price <strong>{current_item.base_price}</strong></p>{current_item.description && <p>{current_item.description}</p>}{Object.keys(currentDetails).filter((key) => key !== 'image_url').length > 0 && <div className="detail-chips">{Object.entries(currentDetails).filter(([key]) => key !== 'image_url').map(([key, value]) => <span key={key}><small>{key.replace(/_/g, ' ')}</small><strong>{displayValue(value)}</strong></span>)}</div>}</div><div className="bid-display"><span>CURRENT BID</span><strong>{highest_bid ? highest_bid.amount : current_item.base_price}</strong>{highest_bid && <small>Team #{highest_bid.team_id}</small>}</div></div> : <div className="waiting-card"><span>◈</span><h3>Waiting for next item…</h3><p>The auction engine is ready for the next lot.</p></div>}
           {current_item && <form onSubmit={handleBid} className="bid-console"><div className="bid-input-wrap"><label htmlFor="bid">YOUR BID</label><input id="bid" type="number" min={minimumBid} step={bidStep} value={bidAmount} onChange={(e) => setBidAmount(Number(e.target.value))} /></div><button type="button" className="btn-secondary step-button" onClick={() => setBidAmount(Math.max(minimumBid, bidAmount - bidStep))}>−</button><button type="button" className="btn-secondary step-button" onClick={() => setBidAmount(Math.max(minimumBid, bidAmount + bidStep))}>＋</button><button type="submit" className="place-bid-button">PLACE BID <span>↗</span></button></form>}
           <div className="auction-controls"><button className="btn-secondary" onClick={() => auctionAction(() => api.pauseAuction(roomId))}>Ⅱ Pause</button><button className="btn-secondary" onClick={() => auctionAction(() => api.resumeAuction(roomId))}>▶ Resume</button><button className="btn-secondary" onClick={() => auctionAction(() => api.nextItem(roomId))}>Next lot →</button><button className="btn-danger" onClick={() => auctionAction(() => api.endAuction(roomId))}>End auction</button></div>
         </main>
