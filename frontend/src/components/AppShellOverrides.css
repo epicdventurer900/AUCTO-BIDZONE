@@ -1,0 +1,7 @@
+/* V2 shell integration: the shell owns global navigation and branding. */
+.app-content > .dashboard-page > .dashboard-topbar { display: none; }
+.app-content > .dashboard-page { max-width: 1180px; }
+.app-content > .dashboard-page .dashboard-hero { margin-top: 8px; }
+@media (max-width: 900px) {
+  .app-content > .dashboard-page { padding-left: 16px; padding-right: 16px; }
+}
