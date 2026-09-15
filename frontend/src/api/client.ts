@@ -58,6 +58,7 @@ export const api = {
 
   createRoom: (data: {
     name: string
+    auction_type?: 'sports' | 'items'
     description?: string
     timer_seconds?: number
     bid_increment?: number
@@ -75,8 +76,13 @@ export const api = {
 
   listItems: (roomId: number) => request<AuctionItem[]>(`/rooms/${roomId}/items`),
 
-  addItem: (roomId: number, data: { name: string; base_price: number; category?: string }) =>
-    request<AuctionItem>(`/rooms/${roomId}/items`, { method: 'POST', body: JSON.stringify(data) }),
+  addItem: (roomId: number, data: {
+    name: string
+    base_price: number
+    category?: string
+    description?: string
+    extra_data?: Record<string, unknown>
+  }) => request<AuctionItem>(`/rooms/${roomId}/items`, { method: 'POST', body: JSON.stringify(data) }),
 
   listTeams: (roomId: number) => request<import('./types').Team[]>(`/rooms/${roomId}/teams`),
 
@@ -103,7 +109,7 @@ export const api = {
   getChat: (roomId: number) => request<ChatMessage[]>(`/rooms/${roomId}/chat`),
 
   sendChat: (roomId: number, message: string) =>
-    request<ChatMessage>(`/rooms/${roomId}/chat`, { method: 'POST', body: JSON.stringify({ message }) }),
+    request<ChatMessage>(`/rooms/${roomId}/chat`, { method: 'POST', body: JSON.stringify({ message } ) }),
 
   getReport: (roomId: number) => request<AuctionReport>(`/rooms/${roomId}/report`),
 }
