@@ -14,6 +14,7 @@ export default function DashboardPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [showJoin, setShowJoin] = useState(false)
   const [roomName, setRoomName] = useState('')
+  const [auctionType, setAuctionType] = useState<'sports' | 'items'>('items')
   const [joinCode, setJoinCode] = useState('')
   const [joinRole, setJoinRole] = useState<'auctioneer' | 'bidder' | 'viewer'>('bidder')
   const [teamName, setTeamName] = useState('')
@@ -33,7 +34,7 @@ export default function DashboardPage() {
     e.preventDefault()
     setError('')
     try {
-      const room = await api.createRoom({ name: roomName.trim() })
+      const room = await api.createRoom({ name: roomName.trim(), auction_type: auctionType })
       navigate(`/rooms/${room.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create room')
@@ -126,8 +127,8 @@ export default function DashboardPage() {
           <div className="room-grid premium-room-grid">{recentRooms.map((room) => (
             <Link key={room.id} to={`/rooms/${room.id}`} className="room-card premium-room-card">
               <div className="room-card-glow" /><div className="room-card-top"><span className={`badge badge-${room.status}`}>{room.status}</span>{room.status === 'live' && <span className="live-dot">● Live</span>}</div>
-              <div className="room-card-id">ROOM / {room.room_code}</div><h3>{room.name}</h3><p>{room.auction_type === 'sports' ? 'Sports auction' : 'Item auction'} · {room.visibility}</p>
-              <div className="room-card-footer"><span>{room.created_by_id === user?.id ? 'HOST' : 'MEMBER'}</span><strong>Open command room →</strong></div>
+              <div className="room-card-id">ROOM / {room.room_code}</div><h3>{room.name}</h3><p>{room.auction_type === 'sports' ? 'Sports auction' : 'General item auction'} · {room.visibility}</p>
+              <div className="room-card-footer"><span>MODE · {room.auction_type.toUpperCase()}</span><strong>Open command room →</strong></div>
             </Link>
           ))}</div>
         )}
@@ -135,12 +136,14 @@ export default function DashboardPage() {
 
       <section className="live-banner" id="features">
         <div><span className="eyebrow"><i className="status-pulse" /> BUILT FOR LIVE AUCTIONS</span><h2>Everything stays in sync.</h2><p>Real-time bidding, live timers, team purses, chat, auction controls and reports — designed as one connected experience.</p></div>
-        <div className="live-feature-list"><span>01 <strong>Live bidding</strong></span><span>02 <strong>Room chat</strong></span><span>03 <strong>Team purses</strong></span><span>04 <strong>Auction reports</strong></span></div>
+        <div className="live-feature-list"><span>01 <strong>Live bidding</strong></span><span>02 <strong>Room chat</strong></span><span>03 <strong>Team purses</strong></span><span>04 <strong>Dynamic item details</strong></span></div>
       </section>
 
       {showCreate && <form className="panel action-panel" onSubmit={handleCreate}>
         <div className="panel-heading"><div><span className="eyebrow">HOST CONSOLE</span><h2>Create auction room</h2></div><button type="button" className="icon-button" aria-label="Close" onClick={() => setShowCreate(false)}>×</button></div>
         <label>Room name<input autoFocus value={roomName} onChange={(e) => setRoomName(e.target.value)} placeholder="e.g. College Cricket Auction" required /></label>
+        <label>Auction mode<select value={auctionType} onChange={(e) => setAuctionType(e.target.value as typeof auctionType)}><option value="items">General / Item Auction</option><option value="sports">Sports / Player Auction</option></select></label>
+        <p className="form-hint">Choose a mode for the item details. The same live bidding engine works for both.</p>
         <button type="submit">Create &amp; Enter Command Room →</button>
       </form>}
 
