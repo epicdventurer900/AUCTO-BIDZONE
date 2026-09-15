@@ -41,8 +41,18 @@ jobs:
           python -m flake8 backend --count --select=E9,F63,F7,F82 --show-source --statistics
           python -m flake8 backend --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
+      - name: Verify test environment
+        run: |
+          test -n "$SECRET_KEY"
+          test -n "$DATABASE_URL"
+          echo "CI test environment variables are configured."
+
       - name: Run backend tests
         working-directory: backend
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+          DATABASE_URL: sqlite:///./ci.db
+          SECRET_KEY: ci-test-secret-key-must-be-at-least-32-characters-long
         run: python -m pytest
 
   frontend:
