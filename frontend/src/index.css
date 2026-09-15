@@ -106,3 +106,37 @@ form input:focus,form select:focus { border-color: rgba(103,232,249,.65); box-sh
 .back-link { display: inline-block; margin-bottom: .5rem; font-size: .875rem; }
 @media (max-width:768px) { .page { padding: 18px 14px 42px; } .topbar { padding: 18px; border-radius: 19px; } .hero-panel { flex-direction: column; align-items: flex-start; padding: 1.5rem; } .hero-actions { justify-content: flex-start; } .user-actions .welcome { display: none; } .auction-layout { grid-template-columns: 1fr; } .report-grid { grid-template-columns: 1fr; } .room-grid { grid-template-columns: 1fr; } .panel { padding: 18px; } }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { transition-duration:.01ms !important; animation-duration:.01ms !important; scroll-behavior:auto !important; } }
+
+/* AUCTO-BIDZONE: black / white / orange visual system */
+:root {
+  --accent: #ff7a00;
+  --accent-2: #ff9d3d;
+  --accent-hover: #ffb45c;
+  --surface: rgba(18,18,18,.94);
+  --surface-soft: rgba(8,8,8,.94);
+  --border: rgba(255,122,0,.22);
+  --muted: #a7a7a7;
+  --shadow: 0 24px 70px rgba(0,0,0,.58);
+}
+html { background: #050505 !important; }
+body { color: #f5f5f5 !important; background: radial-gradient(circle at 12% 8%,rgba(255,122,0,.13),transparent 25%),radial-gradient(circle at 88% 18%,rgba(255,122,0,.08),transparent 24%),#050505 !important; }
+body::before { background-image: linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px) !important; }
+.page::before { background: rgba(255,122,0,.08) !important; }
+.topbar,.hero-panel,.panel,.auth-card { background: linear-gradient(145deg,rgba(24,24,24,.97),rgba(8,8,8,.95)) !important; border-color: rgba(255,122,0,.2) !important; }
+.topbar h1,.hero-panel h2 { background: linear-gradient(90deg,#fff 0%,#ffb45c 52%,#ff7a00 100%) !important; -webkit-background-clip:text !important; background-clip:text !important; color:transparent !important; }
+.eyebrow,a,.open-room,.empty-icon,.chat-user { color:#ff8a1a !important; }
+.brand-mark { background:linear-gradient(135deg,#ff7a00,#ff9d3d) !important; box-shadow:0 12px 32px rgba(255,122,0,.28),inset 0 1px rgba(255,255,255,.4) !important; }
+button { background:linear-gradient(135deg,#ff7a00,#ff9d3d) !important; color:#090909 !important; box-shadow:0 12px 32px rgba(255,122,0,.2),inset 0 1px rgba(255,255,255,.4) !important; }
+button:hover:not(:disabled) { box-shadow:0 18px 42px rgba(255,122,0,.3),inset 0 1px rgba(255,255,255,.5) !important; }
+.btn-secondary { color:#f2f2f2 !important; background:#151515 !important; border-color:rgba(255,255,255,.12) !important; }
+.btn-secondary:hover:not(:disabled) { background:#202020 !important; }
+form input,form select { background:#0b0b0b !important; border-color:rgba(255,255,255,.12) !important; color:#f5f5f5 !important; }
+form input:focus,form select:focus { border-color:rgba(255,122,0,.7) !important; box-shadow:0 0 0 4px rgba(255,122,0,.1),0 8px 30px rgba(0,0,0,.3) !important; }
+.room-card { background:linear-gradient(145deg,#1a1a1a,#080808) !important; border-color:rgba(255,255,255,.1) !important; }
+.room-card::before { background:rgba(255,122,0,.11) !important; }
+.room-card:hover { border-color:rgba(255,122,0,.45) !important; box-shadow:18px 28px 55px rgba(0,0,0,.5),0 0 34px rgba(255,122,0,.1),inset 0 1px rgba(255,255,255,.1) !important; }
+.room-count,.badge { background:#111 !important; border-color:rgba(255,255,255,.1) !important; }
+.room-code { color:#fff !important; }
+.welcome,form label { color:#d0d0d0 !important; }
+.panel:hover { border-color:rgba(255,122,0,.3) !important; }
+.timer { background:linear-gradient(180deg,#fff,#ffb45c 55%,#ff7a00) !important; -webkit-background-clip:text !important; background-clip:text !important; color:transparent !important; filter:drop-shadow(0 8px 25px rgba(255,122,0,.14)); }
