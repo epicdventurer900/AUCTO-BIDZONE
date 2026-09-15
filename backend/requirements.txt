@@ -16,7 +16,7 @@ passlib==1.7.4
 psycopg2-binary==2.9.12
 PyJWT==2.10.1
 pydantic==2.13.4
-pydantic-settings==2.14.1
+pydantic-settings==2.14.2
 pydantic_core==2.46.4
 pytest==9.1.1
 python-dotenv==1.2.2
