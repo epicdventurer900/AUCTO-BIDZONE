@@ -18,7 +18,7 @@ PyJWT==2.10.1
 pydantic==2.13.4
 pydantic-settings==2.14.1
 pydantic_core==2.46.4
-pytest==8.4.3
+pytest==9.1.1
 python-dotenv==1.2.2
 python-multipart==0.0.32
 six==1.17.0
