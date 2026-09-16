@@ -81,6 +81,9 @@ def patch_room(room_id: int, data: RoomUpdate, current_user: CurrentUser, db: Db
 def join_existing_room(data: RoomJoin, current_user: CurrentUser, db: DbSession):
     try:
         return join_room(db, current_user.id, data)
+    except PermissionError as exc:
+        # Role escalation attempts are authorization failures, not server errors.
+        raise HTTPException(status_code=403, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
