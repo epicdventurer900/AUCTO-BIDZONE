@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [ master ]
 
+# CI only needs to read repository contents. Keep the default token
+# permissions least-privileged instead of inheriting write access.
+permissions:
+  contents: read
+
 jobs:
   backend:
     name: Backend checks
