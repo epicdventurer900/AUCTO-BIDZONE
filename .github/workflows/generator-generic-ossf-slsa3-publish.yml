@@ -7,7 +7,7 @@
 # The generation satisfies level 3 for the provenance requirements - see https://slsa.dev/spec/v0.1/requirements
 # The project is an initiative of the OpenSSF (openssf.org) and is developed at
 # https://github.com/slsa-framework/slsa-github-generator.
-# The provenance file can be verified using https://github.com/slsa-framework/slsa-verifier.
+# The provenance file can be verified using https://slsa.dev/slsa-github-generator.
 # For more information about SLSA and how it improves the supply-chain, visit slsa.dev.
 
 name: SLSA generic generator
@@ -15,6 +15,11 @@ on:
   workflow_dispatch:
   release:
     types: [created]
+
+# The build job only checks out repository contents. Release/provenance
+# write permissions remain explicitly scoped to the provenance job below.
+permissions:
+  contents: read
 
 jobs:
   build:
