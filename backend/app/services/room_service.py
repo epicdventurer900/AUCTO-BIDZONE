@@ -70,6 +70,12 @@ def join_room(db: Session, user_id: int, data: RoomJoin) -> RoomMember:
     if room.status not in (RoomStatus.DRAFT, RoomStatus.SETUP):
         raise ValueError("Cannot join room after auction has started")
 
+    # A join request must never be able to self-escalate a normal user to
+    # auctioneer. The room creator is the initial auctioneer; additional role
+    # assignment must happen through an authenticated room-management action.
+    if data.role == RoomRole.AUCTIONEER:
+        raise PermissionError("Auctioneer role cannot be self-assigned")
+
     existing = (
         db.query(RoomMember)
         .filter(RoomMember.room_id == room.id, RoomMember.user_id == user_id)
@@ -77,19 +83,6 @@ def join_room(db: Session, user_id: int, data: RoomJoin) -> RoomMember:
     )
     if existing:
         raise ValueError("Already a member of this room")
-
-    if data.role == RoomRole.AUCTIONEER:
-        auctioneer_count = (
-            db.query(RoomMember)
-            .filter(
-                RoomMember.room_id == room.id,
-                RoomMember.role == RoomRole.AUCTIONEER,
-                RoomMember.is_active.is_(True),
-            )
-            .count()
-        )
-        if auctioneer_count >= room.max_auctioneers:
-            raise ValueError("Auctioneer limit reached for this room")
 
     team_id = None
     if data.role == RoomRole.BIDDER:
