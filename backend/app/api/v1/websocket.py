@@ -1,6 +1,8 @@
 import json
+import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from pydantic import ValidationError
 
 from app.auction_engine.service import get_auction_state, place_bid
 from app.chat.service import send_chat
@@ -12,6 +14,7 @@ from app.services.room_service import get_user_membership
 from app.websocket.manager import ws_manager
 
 router = APIRouter(tags=["websocket"])
+logger = logging.getLogger(__name__)
 
 
 @router.websocket("/ws/rooms/{room_id}")
@@ -65,10 +68,13 @@ async def room_websocket(websocket: WebSocket, room_id: int, token: str):
 
             if event == "place_bid":
                 try:
-                    bid = await place_bid(db, room, user_id, PlaceBidRequest(amount=data["amount"]))
+                    bid = await place_bid(db, room, user_id, PlaceBidRequest.model_validate(data))
                     await ws_manager.send_personal(websocket, "bid_ack", {"bid_id": bid.id, "amount": bid.amount})
-                except Exception as exc:
+                except (PermissionError, ValueError, ValidationError) as exc:
                     await ws_manager.send_personal(websocket, "error", {"message": str(exc)})
+                except Exception:
+                    logger.exception("Unexpected WebSocket bid error for room %s", room_id)
+                    await ws_manager.send_personal(websocket, "error", {"message": "Unable to place bid"})
 
             elif event == "request_sync":
                 room = db.query(Room).filter(Room.id == room_id).first()
@@ -84,9 +90,12 @@ async def room_websocket(websocket: WebSocket, room_id: int, token: str):
                     if not room:
                         await ws_manager.send_personal(websocket, "error", {"message": "Room not found"})
                         continue
-                    await send_chat(db, room, user_id, ChatMessageCreate(message=data["message"]))
-                except Exception as exc:
+                    await send_chat(db, room, user_id, ChatMessageCreate.model_validate(data))
+                except (PermissionError, ValueError, ValidationError) as exc:
                     await ws_manager.send_personal(websocket, "error", {"message": str(exc)})
+                except Exception:
+                    logger.exception("Unexpected WebSocket chat error for room %s", room_id)
+                    await ws_manager.send_personal(websocket, "error", {"message": "Unable to send chat message"})
 
     except WebSocketDisconnect:
         pass
