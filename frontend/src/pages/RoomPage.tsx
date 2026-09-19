@@ -142,7 +142,7 @@ export default function RoomPage() {
     return (
       <div className="page">
         <p>{error || 'Loading room…'}</p>
-        <Link to="/">← Back</Link>
+        <Link to="/dashboard">← Back</Link>
       </div>
     )
   }
@@ -152,24 +152,34 @@ export default function RoomPage() {
   const isLive = room.status === 'live' || room.status === 'paused'
 
   return (
-    <div className="page room-page">
-      <header className="topbar">
+    <div className="page room-page hud-shell">
+      <header className="topbar hud-topbar">
         <div>
-          <Link to="/" className="back-link">← Dashboard</Link>
+          <Link to="/dashboard" className="back-link">← Return to dashboard</Link>
+          <div className="eyebrow">AUCTO // LIVE AUCTION CONTROL</div>
           <h1>{room.name}</h1>
-          <p>
-            Code: <strong>{room.room_code}</strong> · Status:{' '}
-            <span className={`badge badge-${room.status}`}>{room.status}</span>
-            {connected && <span className="live-dot"> Live</span>}
+          <p className="room-meta">
+            ROOM <strong>{room.room_code}</strong>
+            <span className={`status-chip status-${room.status}`}>{room.status}</span>
           </p>
+        </div>
+        <div className="connection-indicator">
+          <span className={`connection-dot ${connected ? 'is-connected' : ''}`} />
+          <span>{connected ? 'LIVE LINK' : 'OFFLINE LINK'}</span>
         </div>
       </header>
 
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error hud-error">{error}</p>}
 
       {isSetup && (
-        <section className="panel">
-          <h2>Setup — add players / items</h2>
+        <section className="panel hud-panel">
+          <div className="section-heading">
+            <div>
+              <div className="eyebrow">SYSTEM INITIALIZATION</div>
+              <h2>Prepare auction inventory</h2>
+            </div>
+            <span className="metric-label">ITEMS QUEUED <strong>{items.length}</strong></span>
+          </div>
           <form onSubmit={handleAddItem} className="inline-form">
             <input placeholder="Player name" value={itemName} onChange={(e) => setItemName(e.target.value)} required />
             <input type="number" min={0} value={itemPrice} onChange={(e) => setItemPrice(Number(e.target.value))} />
@@ -189,55 +199,96 @@ export default function RoomPage() {
       )}
 
       {isLive && (
-        <div className="auction-layout">
-          <section className="panel auction-main">
-            <div className="timer-block">
-              <span className="phase">{phase.replace('_', ' ')}</span>
-              <span className="timer">{timer_remaining}s</span>
+        <>
+          <div className="hud-metrics">
+            <div className="metric-card">
+              <span className="metric-label">AUCTION STATUS</span>
+              <strong className="metric-value">{room.status.toUpperCase()}</strong>
+            </div>
+            <div className="metric-card">
+              <span className="metric-label">CURRENT PHASE</span>
+              <strong className="metric-value">{phase.replace('_', ' ').toUpperCase()}</strong>
+            </div>
+            <div className="metric-card">
+              <span className="metric-label">BID INCREMENT</span>
+              <strong className="metric-value">{room.bid_increment}</strong>
+            </div>
+            <div className="metric-card">
+              <span className="metric-label">ACTIVE TEAMS</span>
+              <strong className="metric-value">{teams.length.toString().padStart(2, '0')}</strong>
+            </div>
+          </div>
+
+          <div className="auction-layout">
+          <section className="panel auction-main hud-panel">
+            <div className="auction-console-header">
+              <div>
+                <div className="eyebrow">LIVE LOT // {current_item ? `#${current_item.id.toString().padStart(3, '0')}` : 'STANDBY'}</div>
+                <span className="phase">{phase.replace('_', ' ')}</span>
+              </div>
+              <div className="timer-readout">
+                <span className="metric-label">TIME REMAINING</span>
+                <strong className="timer">{timer_remaining.toString().padStart(2, '0')}s</strong>
+              </div>
             </div>
             {current_item ? (
               <>
-                <h2>{current_item.name}</h2>
-                <p>Base price: {current_item.base_price}</p>
+                <div className="lot-display">
+                  <span className="lot-kicker">CURRENT ASSET</span>
+                  <h2>{current_item.name}</h2>
+                  <p>BASE VALUATION <strong>{current_item.base_price}</strong></p>
+                </div>
                 {highest_bid ? (
-                  <p className="current-bid">
-                    Current bid: <strong>{highest_bid.amount}</strong> (Team #{highest_bid.team_id})
-                  </p>
+                  <div className="current-bid hud-bid">
+                    <span className="metric-label">HIGHEST ACTIVE BID // TEAM #{highest_bid.team_id}</span>
+                    <strong>{highest_bid.amount}</strong>
+                  </div>
                 ) : (
-                  <p className="muted">No bids yet</p>
+                  <div className="current-bid hud-bid empty-bid">
+                    <span className="metric-label">HIGHEST ACTIVE BID</span>
+                    <strong>NO BIDS YET</strong>
+                  </div>
                 )}
-                <form onSubmit={handleBid} className="inline-form">
+                <form onSubmit={handleBid} className="inline-form bid-form">
+                  <label htmlFor="bid-amount">ENTER BID</label>
                   <input
+                    id="bid-amount"
                     type="number"
                     min={current_item.base_price}
                     value={bidAmount}
                     onChange={(e) => setBidAmount(Number(e.target.value))}
                   />
-                  <button type="submit">Place bid</button>
+                  <button type="submit">Transmit bid</button>
                 </form>
               </>
             ) : (
-              <p>Waiting for next item…</p>
+              <p className="empty-state">Waiting for next item…</p>
             )}
 
             <div className="auction-controls">
-              <button className="btn-secondary" onClick={() => auctionAction(() => api.pauseAuction(roomId))}>
+              <button className="btn-secondary hud-command" onClick={() => auctionAction(() => api.pauseAuction(roomId))}>
                 Pause
               </button>
-              <button className="btn-secondary" onClick={() => auctionAction(() => api.resumeAuction(roomId))}>
+              <button className="btn-secondary hud-command" onClick={() => auctionAction(() => api.resumeAuction(roomId))}>
                 Resume
               </button>
-              <button className="btn-secondary" onClick={() => auctionAction(() => api.nextItem(roomId))}>
+              <button className="btn-secondary hud-command" onClick={() => auctionAction(() => api.nextItem(roomId))}>
                 Next item
               </button>
-              <button className="btn-danger" onClick={() => auctionAction(() => api.endAuction(roomId))}>
+              <button className="btn-danger hud-command" onClick={() => auctionAction(() => api.endAuction(roomId))}>
                 End auction
               </button>
             </div>
           </section>
 
-          <aside className="panel sidebar">
-            <h3>Teams</h3>
+          <aside className="panel sidebar hud-panel">
+            <div className="section-heading compact-heading">
+              <div>
+                <div className="eyebrow">LIVE METRICS</div>
+                <h3>Team telemetry</h3>
+              </div>
+              <span className="connection-dot is-connected" />
+            </div>
             <ul className="team-list">
               {teams.map((t) => (
                 <li key={t.id}>
@@ -247,7 +298,10 @@ export default function RoomPage() {
               ))}
             </ul>
 
-            <h3>Chat</h3>
+            <div className="chat-heading">
+              <div className="eyebrow">COMMS CHANNEL</div>
+              <h3>Room chat</h3>
+            </div>
             <div className="chat-box">
               {chat.map((m) => (
                 <div key={m.id} className="chat-msg">
@@ -261,6 +315,7 @@ export default function RoomPage() {
             </form>
           </aside>
         </div>
+        </>
       )}
 
       {room.status === 'ended' && report && (

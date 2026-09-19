@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect, text
 
 from app.api.v1.router import api_router
+from app.api.v1 import websocket
 from app.core.config import settings
 from app.database.database import Base, engine
 import app.models  # noqa: F401
@@ -24,6 +25,7 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+app.include_router(websocket.router, prefix="/api/v1")
 
 
 def ensure_users_schema_compatibility():
